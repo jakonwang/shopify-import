@@ -267,7 +267,7 @@ class ProductController extends Controller
                                 }
                                 
                                 fputcsv($file, [
-                                    $isFirstRow ? $product->handle : '',
+                                    $product->handle, // Handle总是需要的
                                     $isFirstRow ? $product->title : '',
                                     $isFirstRow ? $product->body_html : '',
                                     $isFirstRow ? $product->vendor : '',
@@ -275,25 +275,25 @@ class ProductController extends Controller
                                     $isFirstRow ? $product->tags : '',
                                     $isFirstRow ? ($product->published ? 'TRUE' : 'FALSE') : '',
                                     $isFirstRow ? ($product->option1_name ?? '') : '',
-                                    $isFirstVariant ? ($variant['option1'] ?? $product->option1_value ?? '') : '',
+                                    $isFirstRow ? ($variant['option1'] ?? $product->option1_value ?? '') : '',
                                     $isFirstRow ? ($product->option2_name ?? '') : '',
-                                    $isFirstVariant ? ($variant['option2'] ?? $product->option2_value ?? '') : '',
+                                    $isFirstRow ? ($variant['option2'] ?? $product->option2_value ?? '') : '',
                                     $isFirstRow ? ($product->option3_name ?? '') : '',
-                                    $isFirstVariant ? ($variant['option3'] ?? $product->option3_value ?? '') : '',
-                                    $isFirstVariant ? ($variant['sku'] ?? $product->variant_sku ?? '') : '',
-                                    $isFirstVariant ? ($variant['grams'] ?? $product->variant_grams ?? '') : '',
-                                    $isFirstVariant ? ($product->variant_inventory_tracker ?? 'shopify') : '',
-                                    $isFirstVariant ? ($product->variant_inventory_qty ?? 1000) : '',
-                                    $isFirstVariant ? ($product->variant_inventory_policy ?? 'continue') : '',
-                                    $isFirstVariant ? ($product->variant_fulfillment_service ?? 'manual') : '',
-                                    $isFirstVariant ? ($variant['price'] ?? $product->variant_price ?? '') : '',
-                                    $isFirstVariant ? ($variant['compare_at_price'] ?? $product->variant_compare_price ?? '') : '',
-                                    $isFirstVariant ? ($variant['requires_shipping'] ?? $product->variant_requires_shipping ? 'TRUE' : 'FALSE') : '',
-                                    $isFirstVariant ? ($variant['taxable'] ?? $product->variant_taxable ? 'TRUE' : 'FALSE') : '',
-                                    $isFirstVariant ? ($variant['barcode'] ?? $product->variant_barcode ?? '') : '',
-                                    $imageUrl,
-                                    $image->position,
-                                    $image->alt_text,
+                                    $isFirstRow ? ($variant['option3'] ?? $product->option3_value ?? '') : '',
+                                    $isFirstRow ? ($variant['sku'] ?? $product->variant_sku ?? '') : '',
+                                    $isFirstRow ? ($variant['grams'] ?? $product->variant_grams ?? 0) : '',
+                                    $isFirstRow ? ($product->variant_inventory_tracker ?? 'shopify') : '',
+                                    $isFirstRow ? ($product->variant_inventory_qty ?? 1000) : '',
+                                    $isFirstRow ? ($product->variant_inventory_policy ?? 'continue') : '',
+                                    $isFirstRow ? ($product->variant_fulfillment_service ?? 'manual') : '',
+                                    $isFirstRow ? ($variant['price'] ?? $product->variant_price ?? '') : '',
+                                    $isFirstRow ? ($variant['compare_at_price'] ?? $product->variant_compare_price ?? '') : '',
+                                    $isFirstRow ? ($variant['requires_shipping'] ?? $product->variant_requires_shipping ? 'TRUE' : 'FALSE') : '',
+                                    $isFirstRow ? ($variant['taxable'] ?? $product->variant_taxable ? 'TRUE' : 'FALSE') : '',
+                                    $isFirstRow ? ($variant['barcode'] ?? $product->variant_barcode ?? '') : '',
+                                    $imageUrl, // 图片URL总是需要的
+                                    $image->position, // 图片位置总是需要的
+                                    $image->alt_text ?? '', // 图片Alt文本总是需要的
                                     $isFirstRow ? ($product->gift_card ? 'TRUE' : 'FALSE') : '',
                                     $isFirstRow ? ($product->seo_title ?? $product->title) : '',
                                     $isFirstRow ? ($product->seo_description ?? '') : '',
@@ -310,11 +310,11 @@ class ProductController extends Controller
                                     $isFirstRow ? ($product->google_shopping_custom_label_2 ?? '') : '',
                                     $isFirstRow ? ($product->google_shopping_custom_label_3 ?? '') : '',
                                     $isFirstRow ? ($product->google_shopping_custom_label_4 ?? '') : '',
-                                    $isFirstVariant ? ($variant['image'] ?? $product->variant_image ?? '') : '',
-                                    $isFirstVariant ? ($product->variant_weight_unit ?? 'kg') : '',
-                                    $isFirstVariant ? ($product->variant_tax_code ?? '') : '',
-                                    $isFirstVariant ? ($product->cost_per_item ?? '') : '',
-                                    $isFirstRow ? strtolower($product->status) : '',
+                                    $isFirstRow ? ($variant['image'] ?? $product->variant_image ?? '') : '',
+                                    $isFirstRow ? ($product->variant_weight_unit ?? 'Kg') : '', // 注意这里使用'Kg'而不是'kg'
+                                    $isFirstRow ? ($product->variant_tax_code ?? '') : '',
+                                    $isFirstRow ? ($product->cost_per_item ?? '') : '',
+                                    $isFirstRow ? $product->status : '',
                                     $isFirstRow ? ($product->collection ?? '') : ''
                                 ]);
                             }
