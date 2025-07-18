@@ -234,7 +234,7 @@ class ProductController extends Controller
                     $images = $product->images->sortBy('position');
                     
                     // 处理变体数据
-                    $variants = json_decode($product->variants ?? '[]', true) ?: [];
+                    $variants = is_array($product->variants) ? $product->variants : (json_decode($product->variants ?? '[]', true) ?: []);
                     if (empty($variants)) {
                         // 如果没有变体数据，创建一个默认变体
                         $variants = [[
