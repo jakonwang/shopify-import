@@ -7,6 +7,7 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
+use Illuminate\Support\Arr;
 
 class TemplateController extends Controller
 {
@@ -160,7 +161,7 @@ class TemplateController extends Controller
                 Log::info('处理变体数据', [
                     'variants_count' => count($validated['variants']),
                     'first_variant' => array_map(function($variant) {
-                        return array_except($variant, ['barcode']); // 排除敏感信息
+                        return Arr::except($variant, ['barcode']); // 使用Arr::except替代array_except
                     }, [$validated['variants'][0]])
                 ]);
             }
@@ -281,10 +282,8 @@ class TemplateController extends Controller
 
             // 处理产品选项和变体
             if (!empty($validated['product_options'])) {
-                Log::info('处理产品选项更新', [
-                    'template_id' => $template->id,
-                    'old_options_count' => !empty($template->product_options) ? count($template->product_options) : 0,
-                    'new_options_count' => count($validated['product_options']),
+                Log::info('处理产品选项', [
+                    'options_count' => count($validated['product_options']),
                     'options' => array_map(function($option) {
                         return [
                             'name' => $option['name'],
@@ -295,12 +294,10 @@ class TemplateController extends Controller
             }
 
             if (!empty($validated['variants'])) {
-                Log::info('处理变体数据更新', [
-                    'template_id' => $template->id,
-                    'old_variants_count' => !empty($template->variants) ? count($template->variants) : 0,
-                    'new_variants_count' => count($validated['variants']),
-                    'sample_variant' => array_map(function($variant) {
-                        return array_except($variant, ['barcode']); // 排除敏感信息
+                Log::info('处理变体数据', [
+                    'variants_count' => count($validated['variants']),
+                    'first_variant' => array_map(function($variant) {
+                        return Arr::except($variant, ['barcode']); // 使用Arr::except替代array_except
                     }, [$validated['variants'][0]])
                 ]);
             }
@@ -346,25 +343,33 @@ class TemplateController extends Controller
     public function destroy(Template $template)
     {
         try {
-            Log::info('接收到删除模板请求', ['template_id' => $template->id]);
+            Log::info('接收到删除模板请求', [
+                'template_id' => $template->id,
+                'name' => $template->name
+            ]);
+            
             $template->delete();
-            Log::info('模板删除成功', ['template_id' => $template->id]);
+            
+            Log::info('模板删除成功', [
+                'template_id' => $template->id,
+                'name' => $template->name
+            ]);
             
             return response()->json([
                 'status' => 'success',
-                'message' => '模板删除成功',
-                'data' => null
-            ], 204);
+                'message' => '模板删除成功'
+            ]);
             
         } catch (\Exception $e) {
             Log::error('模板删除失败', [
+                'template_id' => $template->id,
                 'error' => $e->getMessage(),
                 'trace' => $e->getTraceAsString()
             ]);
+            
             return response()->json([
                 'status' => 'error',
-                'message' => '模板删除失败: ' . $e->getMessage(),
-                'data' => null
+                'message' => '模板删除失败: ' . $e->getMessage()
             ], 500);
         }
     }
