@@ -13,10 +13,10 @@ return new class extends Migration
     {
         Schema::table('templates', function (Blueprint $table) {
             // 添加产品选项JSON字段
-            $table->json('product_options')->nullable()->after('collection')->comment('产品选项配置JSON格式');
+            $table->json('product_options')->nullable()->comment('产品选项配置JSON格式');
             
             // 添加变体JSON字段
-            $table->json('variants')->nullable()->after('product_options')->comment('产品变体配置JSON格式');
+            $table->json('variants')->nullable()->comment('产品变体配置JSON格式');
         });
     }
 

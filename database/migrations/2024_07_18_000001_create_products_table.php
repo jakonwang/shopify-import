@@ -22,6 +22,10 @@ return new class extends Migration
             $table->decimal('variant_compare_price', 10, 2)->nullable();
             $table->string('status')->default('active');
             $table->timestamps();
+
+            // 添加索引以提高性能
+            $table->index('handle');
+            $table->index('status');
         });
     }
 

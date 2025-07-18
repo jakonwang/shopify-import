@@ -15,6 +15,9 @@ return new class extends Migration
             $table->integer('position')->default(1);
             $table->string('alt_text')->nullable();
             $table->timestamps();
+
+            // 添加索引以提高性能
+            $table->index('position');
         });
     }
 
