@@ -233,122 +233,145 @@ class ProductController extends Controller
                 foreach ($products as $product) {
                     $images = $product->images->sortBy('position');
                     
-                    if ($images->count() > 0) {
-                        // 如果有图片，为每张图片创建一行（第一行包含所有商品信息，后续行只包含图片信息）
-                        foreach ($images as $index => $image) {
-                            $isFirstRow = $index === 0;
-                            
-                            // 确保图片URL是完整的绝对URL
-                            $imageUrl = $image->image_src;
-                            if ($imageUrl && !str_starts_with($imageUrl, 'http')) {
-                                $imageUrl = url($imageUrl);
+                    // 处理变体数据
+                    $variants = json_decode($product->variants ?? '[]', true) ?: [];
+                    if (empty($variants)) {
+                        // 如果没有变体数据，创建一个默认变体
+                        $variants = [[
+                            'option1' => $product->option1_value,
+                            'option2' => $product->option2_value,
+                            'option3' => $product->option3_value,
+                            'sku' => $product->variant_sku,
+                            'grams' => $product->variant_grams,
+                            'price' => $product->variant_price,
+                            'compare_at_price' => $product->variant_compare_price,
+                            'requires_shipping' => $product->variant_requires_shipping,
+                            'taxable' => $product->variant_taxable,
+                            'barcode' => $product->variant_barcode
+                        ]];
+                    }
+
+                    // 为每个变体创建一行
+                    foreach ($variants as $variantIndex => $variant) {
+                        $isFirstVariant = $variantIndex === 0;
+                        
+                        // 如果有图片，为每个变体的每张图片创建一行
+                        if ($images->count() > 0) {
+                            foreach ($images as $imageIndex => $image) {
+                                $isFirstRow = $isFirstVariant && $imageIndex === 0;
+                                
+                                // 确保图片URL是完整的绝对URL
+                                $imageUrl = $image->image_src;
+                                if ($imageUrl && !str_starts_with($imageUrl, 'http')) {
+                                    $imageUrl = url($imageUrl);
+                                }
+                                
+                                fputcsv($file, [
+                                    $isFirstRow ? $product->handle : '',
+                                    $isFirstRow ? $product->title : '',
+                                    $isFirstRow ? $product->body_html : '',
+                                    $isFirstRow ? $product->vendor : '',
+                                    $isFirstRow ? $product->type : '',
+                                    $isFirstRow ? $product->tags : '',
+                                    $isFirstRow ? ($product->published ? 'TRUE' : 'FALSE') : '',
+                                    $isFirstRow ? ($product->option1_name ?? '') : '',
+                                    $isFirstVariant ? ($variant['option1'] ?? $product->option1_value ?? '') : '',
+                                    $isFirstRow ? ($product->option2_name ?? '') : '',
+                                    $isFirstVariant ? ($variant['option2'] ?? $product->option2_value ?? '') : '',
+                                    $isFirstRow ? ($product->option3_name ?? '') : '',
+                                    $isFirstVariant ? ($variant['option3'] ?? $product->option3_value ?? '') : '',
+                                    $isFirstVariant ? ($variant['sku'] ?? $product->variant_sku ?? '') : '',
+                                    $isFirstVariant ? ($variant['grams'] ?? $product->variant_grams ?? '') : '',
+                                    $isFirstVariant ? ($product->variant_inventory_tracker ?? 'shopify') : '',
+                                    $isFirstVariant ? ($product->variant_inventory_qty ?? 1000) : '',
+                                    $isFirstVariant ? ($product->variant_inventory_policy ?? 'continue') : '',
+                                    $isFirstVariant ? ($product->variant_fulfillment_service ?? 'manual') : '',
+                                    $isFirstVariant ? ($variant['price'] ?? $product->variant_price ?? '') : '',
+                                    $isFirstVariant ? ($variant['compare_at_price'] ?? $product->variant_compare_price ?? '') : '',
+                                    $isFirstVariant ? ($variant['requires_shipping'] ?? $product->variant_requires_shipping ? 'TRUE' : 'FALSE') : '',
+                                    $isFirstVariant ? ($variant['taxable'] ?? $product->variant_taxable ? 'TRUE' : 'FALSE') : '',
+                                    $isFirstVariant ? ($variant['barcode'] ?? $product->variant_barcode ?? '') : '',
+                                    $imageUrl,
+                                    $image->position,
+                                    $image->alt_text,
+                                    $isFirstRow ? ($product->gift_card ? 'TRUE' : 'FALSE') : '',
+                                    $isFirstRow ? ($product->seo_title ?? $product->title) : '',
+                                    $isFirstRow ? ($product->seo_description ?? '') : '',
+                                    $isFirstRow ? ($product->google_shopping_category ?? '') : '',
+                                    $isFirstRow ? ($product->google_shopping_gender ?? '') : '',
+                                    $isFirstRow ? ($product->google_shopping_age_group ?? '') : '',
+                                    $isFirstRow ? ($product->google_shopping_mpn ?? '') : '',
+                                    $isFirstRow ? ($product->google_shopping_adwords_grouping ?? '') : '',
+                                    $isFirstRow ? ($product->google_shopping_adwords_labels ?? '') : '',
+                                    $isFirstRow ? ($product->google_shopping_condition ?? 'new') : '',
+                                    $isFirstRow ? ($product->google_shopping_custom_product ? 'TRUE' : 'FALSE') : '',
+                                    $isFirstRow ? ($product->google_shopping_custom_label_0 ?? '') : '',
+                                    $isFirstRow ? ($product->google_shopping_custom_label_1 ?? '') : '',
+                                    $isFirstRow ? ($product->google_shopping_custom_label_2 ?? '') : '',
+                                    $isFirstRow ? ($product->google_shopping_custom_label_3 ?? '') : '',
+                                    $isFirstRow ? ($product->google_shopping_custom_label_4 ?? '') : '',
+                                    $isFirstVariant ? ($variant['image'] ?? $product->variant_image ?? '') : '',
+                                    $isFirstVariant ? ($product->variant_weight_unit ?? 'kg') : '',
+                                    $isFirstVariant ? ($product->variant_tax_code ?? '') : '',
+                                    $isFirstVariant ? ($product->cost_per_item ?? '') : '',
+                                    $isFirstRow ? strtolower($product->status) : '',
+                                    $isFirstRow ? ($product->collection ?? '') : ''
+                                ]);
                             }
-                            
+                        } else {
+                            // 如果没有图片，只为每个变体创建一行
                             fputcsv($file, [
-                                $isFirstRow ? $product->handle : '',
-                                $isFirstRow ? $product->title : '',
-                                $isFirstRow ? $product->body_html : '',
-                                $isFirstRow ? $product->vendor : '',
-                                $isFirstRow ? $product->type : '',
-                                $isFirstRow ? $product->tags : '',
-                                $isFirstRow ? ($product->published ? 'TRUE' : 'FALSE') : '',
-                                $isFirstRow ? ($product->option1_name ?? '') : '',
-                                '', // Option1 Value - 将在商品变体中设置
-                                $isFirstRow ? ($product->option2_name ?? '') : '',
-                                '', // Option2 Value - 将在商品变体中设置
-                                $isFirstRow ? ($product->option3_name ?? '') : '',
-                                '', // Option3 Value - 将在商品变体中设置
-                                $isFirstRow ? $product->variant_sku : '',
-                                $isFirstRow ? ($product->variant_grams ?? '') : '',
-                                $isFirstRow ? ($product->variant_inventory_tracker ?? 'shopify') : '',
-                                $isFirstRow ? ($product->variant_inventory_qty ?? 1000) : '',
-                                $isFirstRow ? ($product->variant_inventory_policy ?? 'continue') : '',
-                                $isFirstRow ? ($product->variant_fulfillment_service ?? 'manual') : '',
-                                $isFirstRow ? $product->variant_price : '',
-                                $isFirstRow ? $product->variant_compare_price : '',
-                                $isFirstRow ? ($product->variant_requires_shipping ? 'TRUE' : 'FALSE') : '',
-                                $isFirstRow ? ($product->variant_taxable ? 'TRUE' : 'FALSE') : '',
-                                $isFirstRow ? ($product->variant_barcode ?? '') : '',
-                                $imageUrl, // 完整的图片URL
-                                $image->position, // Image Position
-                                $image->alt_text, // Image Alt Text
-                                $isFirstRow ? ($product->gift_card ? 'TRUE' : 'FALSE') : '',
-                                $isFirstRow ? ($product->seo_title ?? $product->title) : '',
-                                $isFirstRow ? ($product->seo_description ?? '') : '',
-                                $isFirstRow ? ($product->google_shopping_category ?? '') : '',
-                                $isFirstRow ? ($product->google_shopping_gender ?? '') : '',
-                                $isFirstRow ? ($product->google_shopping_age_group ?? '') : '',
-                                $isFirstRow ? ($product->google_shopping_mpn ?? '') : '',
-                                $isFirstRow ? ($product->google_shopping_adwords_grouping ?? '') : '',
-                                $isFirstRow ? ($product->google_shopping_adwords_labels ?? '') : '',
-                                $isFirstRow ? ($product->google_shopping_condition ?? 'new') : '',
-                                $isFirstRow ? ($product->google_shopping_custom_product ? 'TRUE' : 'FALSE') : '',
-                                $isFirstRow ? ($product->google_shopping_custom_label_0 ?? '') : '',
-                                $isFirstRow ? ($product->google_shopping_custom_label_1 ?? '') : '',
-                                $isFirstRow ? ($product->google_shopping_custom_label_2 ?? '') : '',
-                                $isFirstRow ? ($product->google_shopping_custom_label_3 ?? '') : '',
-                                $isFirstRow ? ($product->google_shopping_custom_label_4 ?? '') : '',
-                                $isFirstRow ? ($product->variant_image ?? '') : '',
-                                $isFirstRow ? ($product->variant_weight_unit ?? 'kg') : '',
-                                $isFirstRow ? ($product->variant_tax_code ?? '') : '',
-                                $isFirstRow ? ($product->cost_per_item ?? '') : '',
-                                $isFirstRow ? strtolower($product->status) : '',
-                                $isFirstRow ? ($product->collection ?? '') : ''
+                                $isFirstVariant ? $product->handle : '',
+                                $isFirstVariant ? $product->title : '',
+                                $isFirstVariant ? $product->body_html : '',
+                                $isFirstVariant ? $product->vendor : '',
+                                $isFirstVariant ? $product->type : '',
+                                $isFirstVariant ? $product->tags : '',
+                                $isFirstVariant ? ($product->published ? 'TRUE' : 'FALSE') : '',
+                                $isFirstVariant ? ($product->option1_name ?? '') : '',
+                                $variant['option1'] ?? $product->option1_value ?? '',
+                                $isFirstVariant ? ($product->option2_name ?? '') : '',
+                                $variant['option2'] ?? $product->option2_value ?? '',
+                                $isFirstVariant ? ($product->option3_name ?? '') : '',
+                                $variant['option3'] ?? $product->option3_value ?? '',
+                                $variant['sku'] ?? $product->variant_sku ?? '',
+                                $variant['grams'] ?? $product->variant_grams ?? '',
+                                $isFirstVariant ? ($product->variant_inventory_tracker ?? 'shopify') : '',
+                                $isFirstVariant ? ($product->variant_inventory_qty ?? 1000) : '',
+                                $isFirstVariant ? ($product->variant_inventory_policy ?? 'continue') : '',
+                                $isFirstVariant ? ($product->variant_fulfillment_service ?? 'manual') : '',
+                                $variant['price'] ?? $product->variant_price ?? '',
+                                $variant['compare_at_price'] ?? $product->variant_compare_price ?? '',
+                                $variant['requires_shipping'] ?? $product->variant_requires_shipping ? 'TRUE' : 'FALSE',
+                                $variant['taxable'] ?? $product->variant_taxable ? 'TRUE' : 'FALSE',
+                                $variant['barcode'] ?? $product->variant_barcode ?? '',
+                                '', // Image Src
+                                '', // Image Position
+                                '', // Image Alt Text
+                                $isFirstVariant ? ($product->gift_card ? 'TRUE' : 'FALSE') : '',
+                                $isFirstVariant ? ($product->seo_title ?? $product->title) : '',
+                                $isFirstVariant ? ($product->seo_description ?? '') : '',
+                                $isFirstVariant ? ($product->google_shopping_category ?? '') : '',
+                                $isFirstVariant ? ($product->google_shopping_gender ?? '') : '',
+                                $isFirstVariant ? ($product->google_shopping_age_group ?? '') : '',
+                                $isFirstVariant ? ($product->google_shopping_mpn ?? '') : '',
+                                $isFirstVariant ? ($product->google_shopping_adwords_grouping ?? '') : '',
+                                $isFirstVariant ? ($product->google_shopping_adwords_labels ?? '') : '',
+                                $isFirstVariant ? ($product->google_shopping_condition ?? 'new') : '',
+                                $isFirstVariant ? ($product->google_shopping_custom_product ? 'TRUE' : 'FALSE') : '',
+                                $isFirstVariant ? ($product->google_shopping_custom_label_0 ?? '') : '',
+                                $isFirstVariant ? ($product->google_shopping_custom_label_1 ?? '') : '',
+                                $isFirstVariant ? ($product->google_shopping_custom_label_2 ?? '') : '',
+                                $isFirstVariant ? ($product->google_shopping_custom_label_3 ?? '') : '',
+                                $isFirstVariant ? ($product->google_shopping_custom_label_4 ?? '') : '',
+                                $variant['image'] ?? $product->variant_image ?? '',
+                                $isFirstVariant ? ($product->variant_weight_unit ?? 'kg') : '',
+                                $isFirstVariant ? ($product->variant_tax_code ?? '') : '',
+                                $isFirstVariant ? ($product->cost_per_item ?? '') : '',
+                                $isFirstVariant ? strtolower($product->status) : '',
+                                $isFirstVariant ? ($product->collection ?? '') : ''
                             ]);
                         }
-                    } else {
-                        // 如果没有图片，只创建一行商品信息
-                        fputcsv($file, [
-                            $product->handle,
-                            $product->title,
-                            $product->body_html,
-                            $product->vendor,
-                            $product->type,
-                            $product->tags,
-                            $product->published ? 'TRUE' : 'FALSE',
-                            $product->option1_name ?? '',
-                            '', // Option1 Value - 将在商品变体中设置
-                            $product->option2_name ?? '',
-                            '', // Option2 Value - 将在商品变体中设置
-                            $product->option3_name ?? '',
-                            '', // Option3 Value - 将在商品变体中设置
-                            $product->variant_sku,
-                            $product->variant_grams ?? '',
-                            $product->variant_inventory_tracker ?? 'shopify',
-                            $product->variant_inventory_qty ?? 1000,
-                            $product->variant_inventory_policy ?? 'continue',
-                            $product->variant_fulfillment_service ?? 'manual',
-                            $product->variant_price,
-                            $product->variant_compare_price,
-                            $product->variant_requires_shipping ? 'TRUE' : 'FALSE',
-                            $product->variant_taxable ? 'TRUE' : 'FALSE',
-                            $product->variant_barcode ?? '',
-                            '', // Image Src
-                            '', // Image Position
-                            '', // Image Alt Text
-                            $product->gift_card ? 'TRUE' : 'FALSE',
-                            $product->seo_title ?? $product->title,
-                            $product->seo_description ?? '',
-                            $product->google_shopping_category ?? '',
-                            $product->google_shopping_gender ?? '',
-                            $product->google_shopping_age_group ?? '',
-                            $product->google_shopping_mpn ?? '',
-                            $product->google_shopping_adwords_grouping ?? '',
-                            $product->google_shopping_adwords_labels ?? '',
-                            $product->google_shopping_condition ?? 'new',
-                            $product->google_shopping_custom_product ? 'TRUE' : 'FALSE',
-                            $product->google_shopping_custom_label_0 ?? '',
-                            $product->google_shopping_custom_label_1 ?? '',
-                            $product->google_shopping_custom_label_2 ?? '',
-                            $product->google_shopping_custom_label_3 ?? '',
-                            $product->google_shopping_custom_label_4 ?? '',
-                            $product->variant_image ?? '',
-                            $product->variant_weight_unit ?? 'kg',
-                            $product->variant_tax_code ?? '',
-                            $product->cost_per_item ?? '',
-                            strtolower($product->status),
-                            $product->collection ?? ''
-                        ]);
                     }
                 }
                 
