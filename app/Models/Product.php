@@ -19,10 +19,13 @@ class Product extends Model
         'variant_compare_price',
         'status',
         
-        // 产品选项字段（仅选项名称）
+        // 产品选项字段
         'option1_name',
         'option2_name',
         'option3_name',
+        'option1_value',
+        'option2_value',
+        'option3_value',
         
         // 变体信息字段
         'variant_grams',
