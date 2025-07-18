@@ -4,26 +4,34 @@ namespace App\Http\Controllers;
 
 use App\Models\Product;
 use App\Models\ProductImage;
+use App\Models\Template;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
+use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\DB;
 
 class UploadController extends Controller
 {
     public function upload(Request $request)
     {
+        Log::info('开始处理单文件上传请求', [
+            'has_file' => $request->hasFile('file'),
+            'template_id' => $request->input('template_id')
+        ]);
+
         // 检查是否有多个文件
         if ($request->hasFile('file') && is_array($request->file('file'))) {
             // 多文件上传，转到uploadFolder方法
             return $this->uploadFolder($request);
         }
         
-        $request->validate([
-            'file' => 'required|file|image|max:5120', // 5MB
-            'template_id' => 'required|exists:templates,id'
-        ]);
-
         try {
+            $request->validate([
+                'file' => 'required|file|image|max:5120', // 5MB
+                'template_id' => 'required|exists:templates,id'
+            ]);
+
             // 获取文件夹名称（作为商品名称）
             $folderName = pathinfo($request->file('file')->getClientOriginalName(), PATHINFO_FILENAME);
             
@@ -49,13 +57,13 @@ class UploadController extends Controller
                 ]);
             } else {
                 // 获取模板信息
-                $template = \App\Models\Template::findOrFail($request->template_id);
+                $template = Template::findOrFail($request->template_id);
                 
                 // 生成商品标题（使用模板的title_format）
                 $productTitle = $this->generateProductTitle($template->title_format, $folderName);
                 
-                // 创建新商品，应用模板的所有字段
-                $product = Product::create([
+                // 准备基础商品数据
+                $productData = [
                     'handle' => Product::generateHandle($productTitle),
                     'title' => $productTitle,
                     'body_html' => $template->body_html,
@@ -67,10 +75,15 @@ class UploadController extends Controller
                     'published' => true,
                     'collection' => $template->collection,
                     
-                    // 产品选项字段（仅选项名称，值留空待后续处理）
+                    // 产品选项字段
                     'option1_name' => $template->option1_name,
                     'option2_name' => $template->option2_name,
                     'option3_name' => $template->option3_name,
+                    
+                    // 确保设置option1_value_title
+                    'option1_value' => $template->option1_value ?? $folderName, // 使用文件夹名称作为默认值
+                    'option2_value' => $template->option2_value,
+                    'option3_value' => $template->option3_value,
                     
                     // 变体信息字段
                     'variant_grams' => $template->variant_grams,
@@ -106,24 +119,76 @@ class UploadController extends Controller
                     'google_shopping_custom_label_2' => $template->google_shopping_custom_label_2,
                     'google_shopping_custom_label_3' => $template->google_shopping_custom_label_3,
                     'google_shopping_custom_label_4' => $template->google_shopping_custom_label_4
+                ];
+
+                // 处理新的变体数据格式
+                if ($template->product_options && $template->variants) {
+                    // 使用新的变体数据格式
+                    $productData['product_options'] = $template->product_options;
+                    $productData['variants'] = $template->variants;
+                    
+                    // 为兼容性设置选项值
+                    if (!empty($template->product_options[0])) {
+                        $productData['option1_name'] = $template->product_options[0]['name'] ?? '';
+                        $productData['option1_value'] = $template->product_options[0]['values'][0] ?? $folderName;
+                    }
+                    if (!empty($template->product_options[1])) {
+                        $productData['option2_name'] = $template->product_options[1]['name'] ?? '';
+                        $productData['option2_value'] = $template->product_options[1]['values'][0] ?? '';
+                    }
+                    if (!empty($template->product_options[2])) {
+                        $productData['option3_name'] = $template->product_options[2]['name'] ?? '';
+                        $productData['option3_value'] = $template->product_options[2]['values'][0] ?? '';
+                    }
+                }
+
+                // 记录日志
+                Log::info('创建商品数据', [
+                    'title' => $productData['title'],
+                    'option1_name' => $productData['option1_name'],
+                    'option1_value' => $productData['option1_value'],
+                    'has_product_options' => isset($productData['product_options']),
+                    'has_variants' => isset($productData['variants'])
                 ]);
 
-                // 创建商品图片
-                ProductImage::create([
-                    'product_id' => $product->id,
-                    'image_src' => Storage::url($path),
-                    'position' => 1,
-                    'alt_text' => $product->title
-                ]);
+                try {
+                    DB::beginTransaction();
+                    
+                    $product = Product::create($productData);
 
-                return response()->json([
-                    'message' => '新商品创建成功',
-                    'product' => $product->load('images')
-                ], 201);
+                    // 创建商品图片
+                    ProductImage::create([
+                        'product_id' => $product->id,
+                        'image_src' => Storage::url($path),
+                        'position' => 1,
+                        'alt_text' => $product->title
+                    ]);
+
+                    DB::commit();
+
+                    return response()->json([
+                        'message' => '新商品创建成功',
+                        'product' => $product->load('images')
+                    ], 201);
+                } catch (\Exception $e) {
+                    DB::rollBack();
+                    Log::error('商品创建失败', [
+                        'error' => $e->getMessage(),
+                        'trace' => $e->getTraceAsString(),
+                        'product_data' => $productData
+                    ]);
+                    throw $e;
+                }
             }
         } catch (\Exception $e) {
+            Log::error('上传失败', [
+                'error' => $e->getMessage(),
+                'trace' => $e->getTraceAsString(),
+                'request_data' => $request->all()
+            ]);
+            
             return response()->json([
-                'message' => '上传失败',
+                'message' => '上传失败: ' . $e->getMessage(),
                 'error' => $e->getMessage()
             ], 500);
         }
@@ -131,28 +196,38 @@ class UploadController extends Controller
 
     public function uploadFolder(Request $request)
     {
+        Log::info('开始处理文件夹上传请求', [
+            'has_files' => $request->hasFile('files'),
+            'has_file_array' => $request->hasFile('file') && is_array($request->file('file')),
+            'template_id' => $request->input('template_id'),
+            'folder_name' => $request->input('folder_name')
+        ]);
+
         // 兼容两种格式：files[]数组 或 file数组
         $files = null;
-        if ($request->hasFile('files')) {
-            $files = $request->file('files');
-            $request->validate([
-                'files.*' => 'required|file|image|max:5120', // 5MB
-                'template_id' => 'required|exists:templates,id'
-            ]);
-        } elseif ($request->hasFile('file') && is_array($request->file('file'))) {
-            $files = $request->file('file');
-            $request->validate([
-                'file.*' => 'required|file|image|max:5120', // 5MB
-                'template_id' => 'required|exists:templates,id'
-            ]);
-        } else {
-            return response()->json([
-                'message' => '没有找到要上传的文件',
-                'error' => 'No files found'
-            ], 400);
-        }
-
         try {
+            if ($request->hasFile('files')) {
+                $files = $request->file('files');
+                $request->validate([
+                    'files.*' => 'required|file|image|max:5120', // 5MB
+                    'template_id' => 'required|exists:templates,id'
+                ]);
+            } elseif ($request->hasFile('file') && is_array($request->file('file'))) {
+                $files = $request->file('file');
+                $request->validate([
+                    'file.*' => 'required|file|image|max:5120', // 5MB
+                    'template_id' => 'required|exists:templates,id'
+                ]);
+            } else {
+                Log::warning('没有找到要上传的文件', [
+                    'request_data' => $request->all()
+                ]);
+                return response()->json([
+                    'message' => '没有找到要上传的文件',
+                    'error' => 'No files found'
+                ], 400);
+            }
+
             $folderName = $request->input('folder_name');
             if (!$folderName) {
                 // 如果没有提供文件夹名称，使用第一个文件的文件名（去除扩展名）
@@ -160,8 +235,13 @@ class UploadController extends Controller
                 $folderName = pathinfo($firstFile->getClientOriginalName(), PATHINFO_FILENAME);
             }
 
+            Log::info('处理文件夹', [
+                'folder_name' => $folderName,
+                'files_count' => count($files)
+            ]);
+
             // 获取模板并生成商品标题
-            $template = \App\Models\Template::findOrFail($request->template_id);
+            $template = Template::findOrFail($request->template_id);
             
             // 生成商品标题（使用模板的title_format）
             $productTitle = $this->generateProductTitle($template->title_format, $folderName);
@@ -179,10 +259,15 @@ class UploadController extends Controller
                 'published' => true,
                 'collection' => $template->collection,
                 
-                // 产品选项字段（兼容旧格式）
+                // 产品选项字段
                 'option1_name' => $template->option1_name,
                 'option2_name' => $template->option2_name,
                 'option3_name' => $template->option3_name,
+                
+                // 确保设置option1_value_title
+                'option1_value' => $template->option1_value ?? $folderName, // 使用文件夹名称作为默认值
+                'option2_value' => $template->option2_value,
+                'option3_value' => $template->option3_value,
                 
                 // 变体信息字段
                 'variant_grams' => $template->variant_grams,
@@ -226,77 +311,92 @@ class UploadController extends Controller
                 $productData['product_options'] = $template->product_options;
                 $productData['variants'] = $template->variants;
                 
-                // 为兼容性设置第一个选项的名称和值
+                // 为兼容性设置选项值
                 if (!empty($template->product_options[0])) {
                     $productData['option1_name'] = $template->product_options[0]['name'] ?? '';
-                    if (!empty($template->product_options[0]['values'])) {
-                        $productData['option1_value'] = $template->product_options[0]['values'][0] ?? '';
-                    }
+                    $productData['option1_value'] = $template->product_options[0]['values'][0] ?? $folderName;
                 }
                 if (!empty($template->product_options[1])) {
                     $productData['option2_name'] = $template->product_options[1]['name'] ?? '';
-                    if (!empty($template->product_options[1]['values'])) {
-                        $productData['option2_value'] = $template->product_options[1]['values'][0] ?? '';
-                    }
+                    $productData['option2_value'] = $template->product_options[1]['values'][0] ?? '';
                 }
                 if (!empty($template->product_options[2])) {
                     $productData['option3_name'] = $template->product_options[2]['name'] ?? '';
-                    if (!empty($template->product_options[2]['values'])) {
-                        $productData['option3_value'] = $template->product_options[2]['values'][0] ?? '';
-                    }
+                    $productData['option3_value'] = $template->product_options[2]['values'][0] ?? '';
                 }
             }
-            
-            $product = Product::create($productData);
 
-            // 处理所有图片
-            foreach ($files as $index => $file) {
-                $path = $file->store('products', 'public');
-                ProductImage::create([
-                    'product_id' => $product->id,
-                    'image_src' => Storage::url($path),
-                    'position' => $index + 1,
-                    'alt_text' => $product->title
+            // 记录日志
+            Log::info('创建商品数据', [
+                'title' => $productData['title'],
+                'option1_name' => $productData['option1_name'],
+                'option1_value' => $productData['option1_value'],
+                'has_product_options' => isset($productData['product_options']),
+                'has_variants' => isset($productData['variants'])
+            ]);
+
+            try {
+                DB::beginTransaction();
+                
+                $product = Product::create($productData);
+
+                // 保存所有图片
+                foreach ($files as $index => $file) {
+                    $path = $file->store('products', 'public');
+                    ProductImage::create([
+                        'product_id' => $product->id,
+                        'image_src' => Storage::url($path),
+                        'position' => $index + 1,
+                        'alt_text' => $product->title
+                    ]);
+                }
+
+                DB::commit();
+
+                return response()->json([
+                    'message' => '新商品创建成功',
+                    'product' => $product->load('images')
+                ], 201);
+            } catch (\Exception $e) {
+                DB::rollBack();
+                Log::error('商品创建失败', [
+                    'error' => $e->getMessage(),
+                    'trace' => $e->getTraceAsString(),
+                    'product_data' => $productData
                 ]);
+                throw $e;
             }
-
-            return response()->json([
-                'message' => '文件夹上传成功',
-                'product' => $product->load('images')
-            ], 201);
-
+            
         } catch (\Exception $e) {
+            Log::error('上传失败', [
+                'error' => $e->getMessage(),
+                'trace' => $e->getTraceAsString(),
+                'request_data' => $request->all()
+            ]);
+            
             return response()->json([
-                'message' => '上传失败',
-                'error' => $e->getMessage()
+                'message' => '上传失败: ' . $e->getMessage(),
+                'error' => $e->getMessage(),
+                'trace' => $e->getTraceAsString()
             ], 500);
         }
     }
 
-    /**
-     * 根据模板格式生成商品标题
-     */
-    private function generateProductTitle($titleFormat, $folderName, $prefix = '', $suffix = '')
+    private function generateProductTitle($titleFormat, $folderName)
     {
-        // 定义可替换的变量
-        $replacements = [
-            '{folder_name}' => $folderName,
-            '{prefix}' => $prefix,
-            '{suffix}' => $suffix,
-        ];
-
         // 替换模板中的变量
-        $title = str_replace(array_keys($replacements), array_values($replacements), $titleFormat);
+        $title = $titleFormat;
         
-        // 清理多余的空格和特殊字符
-        $title = preg_replace('/\s+/', ' ', $title); // 多个空格替换为单个空格
-        $title = trim($title, ' -'); // 移除首尾的空格和横线
+        // 替换文件夹名称
+        $title = str_replace('{folder_name}', $folderName, $title);
         
-        // 如果处理后的标题为空，则使用文件夹名称作为备用
-        if (empty($title)) {
-            $title = $folderName;
-        }
-
+        // 替换前缀和后缀（如果存在）
+        $title = str_replace('{prefix}', '', $title); // 默认为空
+        $title = str_replace('{suffix}', '', $title); // 默认为空
+        
+        // 清理多余的空格
+        $title = preg_replace('/\s+/', ' ', trim($title));
+        
         return $title;
     }
 } 
