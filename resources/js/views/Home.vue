@@ -49,7 +49,9 @@
                   <div>5. 系统会自动识别每个子文件夹并生成对应的商品</div>
                 </div>
                 <div class="text-blue-600 text-xs mt-2">
-                  💡 示例：选择"秋季新品"文件夹，其中包含"连衣裙A款"、"连衣裙B款"等子文件夹
+                  💡 示例：选择"秋季新品"文件夹，其中包含"连衣裙A款"、"连衣裙B款"等子文件夹<br>
+                  📁 秋季新品/ → 📁 连衣裙A款/ → 🖼️ 01.jpg, 02.jpg, 03.jpg<br>
+                  📁 秋季新品/ → 📁 连衣裙B款/ → 🖼️ main.jpg, detail.jpg
                 </div>
               </div>
             </div>
@@ -91,7 +93,7 @@
               <template v-else-if="selectedTemplate && folderGroups.length === 0">
                 最大文件大小：5MB | 支持格式：JPG, PNG, WebP<br>
                 <span class="text-primary">✓ 已选择模板：{{ currentTemplate?.name }}</span><br>
-                <span class="text-secondary text-sm">💡 提示：选择包含多个商品文件夹的根目录，系统会自动识别每个子文件夹为一个商品</span>
+                <span class="text-secondary text-sm">💡 提示：选择包含多个商品子文件夹的根目录，系统会自动识别每个子文件夹为一个商品</span>
               </template>
               <template v-else-if="uploading">
                 请稍候，正在处理您的商品文件...
@@ -579,13 +581,24 @@ const handleFolderChange = (event) => {
   const groupedFiles = {};
   
   files.forEach(file => {
-    // 提取文件夹名称（取路径中的第一级目录名）
+    // 提取路径信息
     const pathParts = file.webkitRelativePath.split('/');
-    const folderName = pathParts[0];
+    
+    // 如果路径只有1级，说明是根目录下的文件，跳过
+    if (pathParts.length <= 1) {
+      console.log('跳过根目录文件:', file.name);
+      return;
+    }
+    
+    // 取第二级目录名作为商品文件夹名（第一级是用户选择的根目录）
+    const folderName = pathParts[1];
     
     // 检查是否为图片文件
     const isImage = /\.(jpg|jpeg|png|webp)$/i.test(file.name);
-    if (!isImage) return;
+    if (!isImage) {
+      console.log('跳过非图片文件:', file.name);
+      return;
+    }
     
     // 检查文件大小
     const isLt5M = file.size / 1024 / 1024 < 5;
@@ -606,6 +619,8 @@ const handleFolderChange = (event) => {
     files
   }));
   
+  console.log('识别到的商品文件夹:', newGroups.map(g => ({ name: g.folderName, count: g.files.length })));
+  
   // 检查是否有重复的文件夹名称
   const existingFolderNames = folderGroups.value.map(group => group.folderName);
   const duplicateFolders = newGroups.filter(group => existingFolderNames.includes(group.folderName));
@@ -618,9 +633,12 @@ const handleFolderChange = (event) => {
   // 添加到现有分组中（只添加不重复的）
   if (uniqueNewGroups.length > 0) {
     folderGroups.value.push(...uniqueNewGroups);
-    ElMessage.success(`成功添加 ${uniqueNewGroups.length} 个商品文件夹，共 ${uniqueNewGroups.reduce((total, group) => total + group.files.length, 0)} 个图片文件`);
+    const totalImages = uniqueNewGroups.reduce((total, group) => total + group.files.length, 0);
+    ElMessage.success(`成功识别 ${uniqueNewGroups.length} 个商品文件夹，共 ${totalImages} 个图片文件`);
   } else if (newGroups.length > 0) {
     ElMessage.info('所有文件夹都已存在，未添加重复项');
+  } else {
+    ElMessage.warning('未找到有效的商品文件夹，请确保选择的目录包含子文件夹，且子文件夹内有图片文件');
   }
   
   console.log('文件夹分组:', folderGroups.value);
