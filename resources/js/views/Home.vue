@@ -35,6 +35,26 @@
         </div>
         
         <div class="admin-card__body">
+          <!-- 使用说明 -->
+          <div class="mb-6 p-4 bg-blue-50 rounded-lg border border-blue-200">
+            <div class="flex items-start gap-3">
+              <el-icon class="text-blue-600 mt-1"><info-filled /></el-icon>
+              <div>
+                <div class="text-blue-800 font-medium mb-2">如何使用批量文件夹上传？</div>
+                <div class="text-blue-700 text-sm space-y-1">
+                  <div>1. 准备商品文件夹结构：创建一个根目录，包含多个商品子文件夹</div>
+                  <div>2. 每个子文件夹代表一个商品，文件夹名称将作为商品标题</div>
+                  <div>3. 子文件夹内放置该商品的所有图片（JPG、PNG、WebP格式）</div>
+                  <div>4. 点击上传区域，选择包含所有商品文件夹的根目录</div>
+                  <div>5. 系统会自动识别每个子文件夹并生成对应的商品</div>
+                </div>
+                <div class="text-blue-600 text-xs mt-2">
+                  💡 示例：选择"秋季新品"文件夹，其中包含"连衣裙A款"、"连衣裙B款"等子文件夹
+                </div>
+              </div>
+            </div>
+          </div>
+          
           <!-- 上传区域 -->
           <div class="upload-area" 
                :class="{ 
@@ -70,13 +90,15 @@
               </template>
               <template v-else-if="selectedTemplate && folderGroups.length === 0">
                 最大文件大小：5MB | 支持格式：JPG, PNG, WebP<br>
-                <span class="text-primary">✓ 已选择模板：{{ currentTemplate?.name }}</span>
+                <span class="text-primary">✓ 已选择模板：{{ currentTemplate?.name }}</span><br>
+                <span class="text-secondary text-sm">💡 提示：选择包含多个商品文件夹的根目录，系统会自动识别每个子文件夹为一个商品</span>
               </template>
               <template v-else-if="uploading">
                 请稍候，正在处理您的商品文件...
               </template>
               <template v-else>
-                共包含 {{ totalFiles }} 个图片文件，点击开始上传
+                共包含 {{ totalFiles }} 个图片文件，点击开始上传<br>
+                <span class="text-secondary text-sm">💡 可以多次选择文件夹，系统会自动合并</span>
               </template>
             </div>
             
@@ -98,6 +120,13 @@
               <div class="admin-tag admin-tag--primary">{{ folderGroups.length }} 个商品</div>
             </div>
             
+            <!-- 文件夹结构说明 -->
+            <div class="mb-4 p-3 bg-gray-50 rounded-lg">
+              <div class="text-sm text-gray-600">
+                <strong>文件夹结构：</strong>系统已识别到 {{ folderGroups.length }} 个商品文件夹，每个文件夹将生成一个独立的商品
+              </div>
+            </div>
+            
             <div class="grid grid-cols-2 gap-4">
               <div v-for="(group, index) in folderGroups" 
                    :key="index" 
@@ -107,12 +136,33 @@
                     <div class="text-primary font-medium">{{ group.folderName }}</div>
                     <div class="text-secondary text-sm">{{ group.files.length }} 张图片</div>
                   </div>
-                  <button 
-                    class="admin-btn admin-btn--danger"
-                    @click="removeFolderGroup(index)"
-                  >
-                    <el-icon><close /></el-icon>
-                  </button>
+                  <div class="flex gap-2">
+                    <button 
+                      class="admin-btn admin-btn--secondary"
+                      @click="toggleFolderDetail(index)"
+                      :title="group.showDetail ? '收起详情' : '查看详情'"
+                    >
+                      <el-icon><view v-if="!group.showDetail" /><hide v-else /></el-icon>
+                    </button>
+                    <button 
+                      class="admin-btn admin-btn--danger"
+                      @click="removeFolderGroup(index)"
+                    >
+                      <el-icon><close /></el-icon>
+                    </button>
+                  </div>
+                </div>
+                
+                <!-- 详细信息 -->
+                <div v-if="group.showDetail" class="px-4 pb-4 border-t border-gray-100">
+                  <div class="mt-3 text-xs text-gray-500 mb-2">文件路径：</div>
+                  <div class="space-y-1 max-h-32 overflow-y-auto">
+                    <div v-for="file in group.files" 
+                         :key="file.name" 
+                         class="text-xs text-gray-600 bg-gray-50 px-2 py-1 rounded">
+                      {{ file.webkitRelativePath }}
+                    </div>
+                  </div>
                 </div>
                 
                 <div class="px-4 pb-4">
@@ -431,7 +481,7 @@
 <script setup>
 import { ref, computed, onMounted, watch } from 'vue';
 import { ElMessage, ElMessageBox } from 'element-plus';
-import { UploadFilled, FolderAdd, Loading, Upload, Delete, Close, Document, Plus, Goods, Download, Box, Edit } from '@element-plus/icons-vue';
+import { UploadFilled, FolderAdd, Loading, Upload, Delete, Close, Document, Plus, Goods, Download, Box, Edit, InfoFilled, View, Hide } from '@element-plus/icons-vue';
 import axios from 'axios';
 import { useRouter } from 'vue-router';
 
@@ -556,11 +606,24 @@ const handleFolderChange = (event) => {
     files
   }));
   
-  // 添加到现有分组中（支持多次选择）
-  folderGroups.value.push(...newGroups);
+  // 检查是否有重复的文件夹名称
+  const existingFolderNames = folderGroups.value.map(group => group.folderName);
+  const duplicateFolders = newGroups.filter(group => existingFolderNames.includes(group.folderName));
+  const uniqueNewGroups = newGroups.filter(group => !existingFolderNames.includes(group.folderName));
+  
+  if (duplicateFolders.length > 0) {
+    ElMessage.warning(`发现重复文件夹：${duplicateFolders.map(f => f.folderName).join(', ')}，已跳过`);
+  }
+  
+  // 添加到现有分组中（只添加不重复的）
+  if (uniqueNewGroups.length > 0) {
+    folderGroups.value.push(...uniqueNewGroups);
+    ElMessage.success(`成功添加 ${uniqueNewGroups.length} 个商品文件夹，共 ${uniqueNewGroups.reduce((total, group) => total + group.files.length, 0)} 个图片文件`);
+  } else if (newGroups.length > 0) {
+    ElMessage.info('所有文件夹都已存在，未添加重复项');
+  }
   
   console.log('文件夹分组:', folderGroups.value);
-  ElMessage.success(`成功添加 ${newGroups.length} 个商品文件夹，共 ${files.filter(f => /\.(jpg|jpeg|png|webp)$/i.test(f.name)).length} 个图片文件`);
   
   // 清空输入框以支持重复选择
   event.target.value = '';
@@ -570,6 +633,11 @@ const handleFolderChange = (event) => {
 const removeFolderGroup = (index) => {
   folderGroups.value.splice(index, 1);
   ElMessage.info('已删除商品文件夹');
+};
+
+// 切换文件夹详情展开/收起
+const toggleFolderDetail = (index) => {
+  folderGroups.value[index].showDetail = !folderGroups.value[index].showDetail;
 };
 
 // 在组件挂载时获取数据
