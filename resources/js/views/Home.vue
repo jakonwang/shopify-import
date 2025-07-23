@@ -316,13 +316,34 @@
       <div class="admin-card__header">
         <div class="flex justify-between items-center">
           <h2 class="heading-2">商品管理</h2>
-          <button 
-            class="admin-btn admin-btn--primary"
-            @click="exportCsv"
-          >
-            <el-icon><download /></el-icon>
-            导出CSV
-          </button>
+          <div class="flex gap-2">
+            <!-- 批量操作按钮 -->
+            <div v-if="selectedProducts.length > 0" class="flex gap-2">
+              <button 
+                class="admin-btn admin-btn--danger"
+                @click="batchDelete"
+                :disabled="selectedProducts.length === 0"
+              >
+                <el-icon><delete /></el-icon>
+                批量删除 ({{ selectedProducts.length }})
+              </button>
+              <button 
+                class="admin-btn admin-btn--primary"
+                @click="exportSelectedCsv"
+                :disabled="selectedProducts.length === 0"
+              >
+                <el-icon><download /></el-icon>
+                导出选中 ({{ selectedProducts.length }})
+              </button>
+            </div>
+            <button 
+              class="admin-btn admin-btn--primary"
+              @click="exportCsv"
+            >
+              <el-icon><download /></el-icon>
+              导出全部
+            </button>
+          </div>
         </div>
       </div>
       
@@ -335,9 +356,47 @@
       </div>
       
       <div v-else class="admin-card__body">
+        <!-- 全选操作 -->
+        <div v-if="products.length > 0" class="mb-4 p-3 bg-gray-50 rounded-lg">
+          <div class="flex items-center justify-between">
+            <div class="flex items-center gap-3">
+              <label class="flex items-center gap-2 cursor-pointer">
+                <input 
+                  type="checkbox" 
+                  :checked="isAllSelected"
+                  @change="toggleSelectAll"
+                  class="admin-checkbox"
+                >
+                <span class="text-sm text-gray-600">
+                  {{ isAllSelected ? '取消全选' : '全选' }}
+                </span>
+              </label>
+              <span class="text-sm text-gray-500">
+                已选择 {{ selectedProducts.length }} / {{ products.length }} 个商品
+              </span>
+            </div>
+            <div v-if="selectedProducts.length > 0" class="flex gap-2">
+              <button 
+                class="admin-btn admin-btn--secondary text-sm"
+                @click="clearSelection"
+              >
+                清空选择
+              </button>
+            </div>
+          </div>
+        </div>
+        
         <table class="admin-table">
           <thead>
             <tr>
+              <th class="w-12">
+                <input 
+                  type="checkbox" 
+                  :checked="isAllSelected"
+                  @change="toggleSelectAll"
+                  class="admin-checkbox"
+                >
+              </th>
               <th>商品名称</th>
               <th>供应商</th>
               <th>类型</th>
@@ -348,6 +407,14 @@
           </thead>
           <tbody>
             <tr v-for="item in products" :key="item.id">
+              <td class="text-center">
+                <input 
+                  type="checkbox" 
+                  :checked="selectedProducts.includes(item.id)"
+                  @change="toggleProductSelection(item.id)"
+                  class="admin-checkbox"
+                >
+              </td>
               <td>
                 <div class="flex items-center gap-2">
                   <div class="text-primary">{{ item.title }}</div>
@@ -497,6 +564,17 @@ const uploading = ref(false); // 上传状态
 const uploadRef = ref(null);
 const editDialogVisible = ref(false);
 const editForm = ref({});
+const selectedProducts = ref([]); // 选中的商品ID数组
+
+// 计算属性：是否全选
+const isAllSelected = computed(() => {
+  return products.value.length > 0 && selectedProducts.value.length === products.value.length;
+});
+
+// 计算属性：部分选中
+const isPartiallySelected = computed(() => {
+  return selectedProducts.value.length > 0 && selectedProducts.value.length < products.value.length;
+});
 
 // 旧的上传计算属性已移除，现在使用文件夹分组上传
 
@@ -656,6 +734,98 @@ const removeFolderGroup = (index) => {
 // 切换文件夹详情展开/收起
 const toggleFolderDetail = (index) => {
   folderGroups.value[index].showDetail = !folderGroups.value[index].showDetail;
+};
+
+// 批量选择相关函数
+const toggleSelectAll = () => {
+  if (isAllSelected.value) {
+    selectedProducts.value = [];
+  } else {
+    selectedProducts.value = products.value.map(product => product.id);
+  }
+};
+
+const toggleProductSelection = (productId) => {
+  const index = selectedProducts.value.indexOf(productId);
+  if (index > -1) {
+    selectedProducts.value.splice(index, 1);
+  } else {
+    selectedProducts.value.push(productId);
+  }
+};
+
+const clearSelection = () => {
+  selectedProducts.value = [];
+};
+
+// 批量删除
+const batchDelete = async () => {
+  if (selectedProducts.value.length === 0) {
+    ElMessage.warning('请先选择要删除的商品');
+    return;
+  }
+
+  try {
+    const result = await ElMessageBox.confirm(
+      `确定要删除选中的 ${selectedProducts.value.length} 个商品吗？此操作不可恢复。`,
+      '批量删除确认',
+      {
+        confirmButtonText: '确定删除',
+        cancelButtonText: '取消',
+        type: 'warning',
+      }
+    );
+
+    if (result === 'confirm') {
+      // 批量删除选中的商品
+      const deletePromises = selectedProducts.value.map(id => 
+        axios.delete(`/api/products/${id}`)
+      );
+      
+      await Promise.all(deletePromises);
+      
+      ElMessage.success(`成功删除 ${selectedProducts.value.length} 个商品`);
+      selectedProducts.value = []; // 清空选择
+      fetchProducts(); // 刷新商品列表
+    }
+  } catch (error) {
+    if (error !== 'cancel') {
+      console.error('批量删除失败:', error);
+      ElMessage.error('批量删除失败，请重试');
+    }
+  }
+};
+
+// 导出选中的商品
+const exportSelectedCsv = async () => {
+  if (selectedProducts.value.length === 0) {
+    ElMessage.warning('请先选择要导出的商品');
+    return;
+  }
+
+  try {
+    const response = await axios.get('/api/products/export', {
+      params: {
+        ids: selectedProducts.value.join(',')
+      },
+      responseType: 'blob'
+    });
+
+    // 创建下载链接
+    const url = window.URL.createObjectURL(new Blob([response.data]));
+    const link = document.createElement('a');
+    link.href = url;
+    link.setAttribute('download', `shopify-products-selected-${new Date().toISOString().split('T')[0]}.csv`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    window.URL.revokeObjectURL(url);
+
+    ElMessage.success(`成功导出 ${selectedProducts.value.length} 个商品`);
+  } catch (error) {
+    console.error('导出失败:', error);
+    ElMessage.error('导出失败，请重试');
+  }
 };
 
 // 在组件挂载时获取数据

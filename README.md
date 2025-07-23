@@ -77,6 +77,77 @@ php artisan queue:work  # 队列处理
 npm run dev  # Vite开发服务器
 ```
 
+## Linux环境特殊说明
+
+如果在Linux环境下部署，需要特别注意以下几点：
+
+### 1. Composer安装
+
+```bash
+# 下载Composer安装程序
+curl -sS https://getcomposer.org/installer | php
+
+# 将Composer移动到全局可访问的位置
+sudo mv composer.phar /usr/local/bin/composer
+
+# 给予执行权限
+sudo chmod +x /usr/local/bin/composer
+```
+
+### 2. 目录权限设置
+
+```bash
+# 设置目录所有者（假设使用www用户）
+sudo chown -R www:www /path/to/your/project
+
+# 设置目录权限
+sudo chmod -R 755 /path/to/your/project
+sudo chmod -R 775 storage
+sudo chmod -R 775 bootstrap/cache
+```
+
+### 3. 生产环境优化
+
+```bash
+# 安装依赖（生产环境）
+composer install --no-dev --optimize-autoloader
+
+# 清理和缓存配置
+php artisan config:clear
+php artisan cache:clear
+php artisan view:clear
+php artisan config:cache
+php artisan route:cache
+php artisan view:cache
+
+# 如果使用队列，启动队列处理器
+php artisan queue:restart
+```
+
+### 4. Supervisor配置（推荐）
+
+创建队列处理器的Supervisor配置：
+
+```ini
+[program:shopify-queue]
+process_name=%(program_name)s_%(process_num)02d
+command=php /path/to/your/project/artisan queue:work --sleep=3 --tries=3
+autostart=true
+autorestart=true
+user=www
+numprocs=2
+redirect_stderr=true
+stdout_logfile=/path/to/your/project/storage/logs/worker.log
+```
+
+保存为 `/etc/supervisor/conf.d/shopify-queue.conf` 然后：
+
+```bash
+sudo supervisorctl reread
+sudo supervisorctl update
+sudo supervisorctl start shopify-queue:*
+```
+
 ## 部署说明
 
 ### Nginx配置示例
@@ -178,6 +249,11 @@ chmod -R 775 storage bootstrap/cache
    - 是否已配置队列驱动（推荐使用redis或database）
    - 是否已启动队列处理器
    - 是否已配置Supervisor管理队列进程（生产环境推荐）
+
+4. 如果在Linux环境下vendor目录不存在：
+   ```bash
+   composer install --no-dev
+   ```
 
 ## 技术支持
 

@@ -159,15 +159,29 @@ class ProductController extends Controller
         }
     }
 
-    public function exportCsv()
+    public function exportCsv(Request $request)
     {
         try {
-            Log::info('开始导出Shopify格式的商品CSV');
-            $products = Product::with('images')->get();
+            Log::info('开始导出Shopify格式的商品CSV', ['request' => $request->all()]);
+            
+            // 检查是否有指定的商品ID
+            $productIds = $request->get('ids');
+            if ($productIds) {
+                $ids = explode(',', $productIds);
+                $products = Product::with('images')->whereIn('id', $ids)->get();
+                Log::info('导出指定商品', ['ids' => $ids, 'count' => $products->count()]);
+            } else {
+                $products = Product::with('images')->get();
+                Log::info('导出所有商品', ['count' => $products->count()]);
+            }
+            
+            $filename = $productIds ? 
+                'shopify-products-selected-' . date('Y-m-d') . '.csv' : 
+                'shopify-products-' . date('Y-m-d') . '.csv';
             
             $headers = [
                 'Content-Type' => 'text/csv; charset=UTF-8',
-                'Content-Disposition' => 'attachment; filename="shopify-products-' . date('Y-m-d') . '.csv"',
+                'Content-Disposition' => 'attachment; filename="' . $filename . '"',
             ];
             
             $callback = function() use ($products) {
